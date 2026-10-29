@@ -1,67 +1,43 @@
-"""
-Your agent. Fill in the methods below, then:
+"""Our agent: drive cell by cell to the goal found in the exploration data.
 
-    uv run source/my_agent.py --challenge <id>      # on the server, one attempt
-    uv run source/my_agent.py --local 7             # on your machine, maze 7, free
+    uv run source/my_agent.py                      # the challenge in .env (VIS_NAV_CHALLENGE)
+    uv run source/my_agent.py --challenge <id>     # one run on the server
+    uv run source/my_agent.py --local 12           # local maze 12, no attempt, no key
 
-Everything your agent may use is on this list; there is nothing else.
-
-    exploration data   images and action labels from earlier drives through this maze
-                       (cli.exploration_data downloads them into data/<challenge>/)
-    info.targets       four views from the goal, facing front, left, back, right
-    info.camera        image size and intrinsic matrix
-    info.limits        step budget and attempt count
-    obs.image          the camera frame, (240, 320, 3) uint8, BGR
-    obs.step / obs.steps_left
-
-The robot's pose, the map and the goal position live on the server and are never sent.
+Before connecting it rebuilds the explorer's path in cell coordinates from the exploration
+images, finds where the goal photos were taken, and plans a route over the cells the
+explorer drove. Driving pins the pose to the wall lattice in every frame; the last few
+centimetres are steered by the goal photos themselves. How and why: cell_drive/README.md
+and REPORT_NOTES_KO.md.
 """
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-import cli
-import numpy as np
-from vis_nav_sdk import Action, Agent, Observation, Result, SessionInfo, run
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))  # cell_drive/ lives next to source/
+
+import cli  # noqa: E402
+from vis_nav_sdk import run  # noqa: E402
+
+from cell_drive.agent import CellAgent  # noqa: E402
 
 
-class MyAgent(Agent):
-    def __init__(self, data_dir: Path) -> None:
-        # Runs before anything touches the server: load the exploration data from
-        # `data_dir`, build your index, warm up your model. A crash here costs no attempt.
-        self.data_dir = data_dir
+class MyAgent(CellAgent):
+    """The submitted agent (cell_drive.agent.CellAgent)."""
 
-    def setup(self, info: SessionInfo) -> None:
-        # Once per session, with the goal views in `info.targets`. Keep it cheap: the
-        # session clock is already running. Called twice per run (once with random frames
-        # as a pre-flight check), so derive from `info` rather than caching across calls.
-        self.targets = info.targets
 
-    def act(self, obs: Observation) -> Action | tuple[Action, int]:
-        # Every step. Return one of:
-        #   Action.FORWARD / BACKWARD / LEFT / RIGHT, combined with | for an arc
-        #   (Action.FORWARD, 4)   hold it for 4 ticks in one round trip
-        #   Action.CHECKIN        "I am at the goal": scores the run and ends it
-        #   Action.QUIT           give up, unscored
-        raise NotImplementedError("decide what to do with obs.image")
-
-    def finish(self, result: Result | None) -> None:
-        # After the session ended. `result` is None if you quit or ran out of steps.
-        pass
-
-    def hud(self) -> list[str]:
-        # Optional: extra lines in the viewer's status column, e.g. your position estimate.
-        return []
-
-    def panel(self) -> np.ndarray | list | None:
-        # Optional: an image, or a list of (image, label) tiles, shown under the camera.
-        return None
+def main():
+    p = cli.parser(__doc__)
+    p.add_argument("--data", default=None, help="exploration data directory (default: download)")
+    p.add_argument("--capture", type=int, default=None, help="ticks per recorded frame")
+    args = p.parse_args()
+    data_dir = cli.exploration_data(args, args.data)
+    result = run(MyAgent(data_dir, args.capture), cli.challenge(args), **cli.run_options(args))
+    print(result)
 
 
 if __name__ == "__main__":
-    parser = cli.parser(__doc__)
-    parser.add_argument("--data", default=None, help="exploration data directory")
-    args = parser.parse_args()
-    data = cli.exploration_data(args, args.data)
-    run(MyAgent(data), cli.challenge(args), **cli.run_options(args))
+    main()

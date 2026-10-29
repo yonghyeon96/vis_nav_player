@@ -11,10 +11,13 @@ wheels/
 
 # Credentials
 .env
+GettingStarted.md
 
 # Data
 /data/
 /cache/
+/artifacts/
+/logs/
 vis_nav_player.log
 .ruff_cache/
 .pytest_cache/

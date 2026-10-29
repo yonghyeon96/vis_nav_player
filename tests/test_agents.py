@@ -224,18 +224,17 @@ def test_baseline_indexes_localises_and_hints(dataset, tmp_path, session, keys):
     assert np.allclose(again.database, agent.database)
 
 
-def test_the_template_agent_is_a_complete_skeleton():
-    from pathlib import Path
-
+def test_my_agent_is_the_cell_drive_agent():
+    # source/my_agent.py is filled in with cell_drive's agent (see REPORT_NOTES_KO.md);
+    # building it needs exploration data, so only its interface is checked here.
     from my_agent import MyAgent
-    from vis_nav_sdk import Agent, SimError, preflight
+    from vis_nav_sdk import Agent
 
-    agent = MyAgent(Path("data/none"))
-    for hook in ("setup", "act", "finish", "hud", "panel"):
-        assert getattr(MyAgent, hook) is not getattr(Agent, hook), f"{hook} not spelled out"
-    with pytest.raises(SimError, match="pre-flight") as caught:
-        preflight(agent)  # no attempt is spent on an act() that is not written yet
-    assert isinstance(caught.value.__cause__, NotImplementedError)
+    from cell_drive.agent import CellAgent
+
+    assert issubclass(MyAgent, CellAgent) and issubclass(MyAgent, Agent)
+    for hook in ("setup", "act", "hud"):
+        assert getattr(MyAgent, hook) is not getattr(Agent, hook), f"{hook} not written"
 
 
 def test_dotenv_fills_the_environment_without_overriding_it(tmp_path, monkeypatch):
