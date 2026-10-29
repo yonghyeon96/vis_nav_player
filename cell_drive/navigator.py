@@ -15,6 +15,10 @@ from cell_drive.goal_pose import GoalViews
 
 CHECKIN = 16
 QUIET = lambda *a: None  # noqa: E731
+# A quarter turn costs 0.76 of its 26 ticks, about 1.5 cells: of two routes equally long,
+# the one with fewer corners wins, and two corners buy one extra cell at most. (A full
+# weight traded cells for corners through open rooms, where the lattice slips along.)
+TURN_WEIGHT = 0.76
 
 
 def plan(cmap, goal_xy, here=None, heading=0.0):
@@ -25,7 +29,7 @@ def plan(cmap, goal_xy, here=None, heading=0.0):
     else:
         start = min(cells, key=lambda c: math.dist((c[0] * 0.4, c[1] * 0.4), here))
     for end in sorted(cells, key=lambda c: math.dist((c[0] * 0.4, c[1] * 0.4), goal_xy))[:6]:
-        path = cmap.route(start, end, heading)
+        path = cmap.route(start, end, heading, turn_weight=TURN_WEIGHT)
         if not path:
             continue
         points = [np.array([c[0] * 0.4, c[1] * 0.4]) for c in path]

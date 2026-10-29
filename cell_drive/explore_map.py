@@ -391,6 +391,11 @@ def build(
     for e in walled:
         cmap.edges.discard(e)
     log(f"map: {len(walled)} connections removed, a wall seen across them")
+    opened = seen_open_edges(cmap, {t: (records[t], tracks[t]) for t in placed})
+    for e in opened:
+        cmap.edges.add(e)
+        cmap.count[e] = 1  # never driven: planned like a connection driven once
+    log(f"map: {len(opened)} connections added, seen open but never driven")
     tracks = [tracks[t] for t in sorted(placed)]
     return records, tracks, cmap, capture
 
@@ -439,6 +444,53 @@ def walled_edges(cmap: CellMap, drives: dict, max_count: int = 2, frames: int = 
         if seen >= 2 and seen >= 0.5 * len(pick):
             walled.append(e)
     return walled
+
+
+def seen_open_edges(cmap: CellMap, drives: dict, frames: int = 8) -> list:
+    """Connections the explorer never drove but looked straight through.
+
+    On the Midterm data the explorer looked from the goal cell through an open doorway
+    and turned away; without that connection the route went round two extra cells.
+    A doorway counts as open when frames taken near one cell's centre, facing the
+    neighbour, see no wall foot ahead until well past the far side of the neighbour
+    cell, and none of them sees one at the doorway.
+    """
+    from cell_drive import perception
+
+    views = {}  # (cell, direction index) -> [(trajectory, frame, distance to the doorway)]
+    for t, (_, tr) in drives.items():
+        for i, (x, y, th) in enumerate(tr.poses):
+            cell = cell_of((x, y))
+            off = np.array([x, y]) - np.array(cell) * 0.4
+            if np.hypot(*off) > 0.12:
+                continue
+            k = round(th / (math.pi / 2)) % 4
+            if abs(wrap_angle(th - k * math.pi / 2)) > math.radians(10):
+                continue
+            d = [(1, 0), (0, 1), (-1, 0), (0, -1)][k]
+            views.setdefault((cell, k), []).append((t, i, 0.2 - (off[0] * d[0] + off[1] * d[1])))
+    opened = []
+    for cell in cmap.visits:
+        for k, d in enumerate([(1, 0), (0, 1), (-1, 0), (0, -1)]):
+            other = (cell[0] + d[0], cell[1] + d[1])
+            e = frozenset((cell, other))
+            if other not in cmap.visits or e in cmap.edges or e in opened:
+                continue
+            seen = views.get((cell, k), [])
+            if len(seen) < 2:
+                continue
+            spread = np.linspace(0, len(seen) - 1, min(frames, len(seen))).astype(int)
+            pick = [seen[j] for j in spread]
+            clear = []
+            for t, i, door in pick:
+                pts = perception.ground_points(cv2.imread(str(drives[t][0][i][0])))
+                clear.append(perception.front_clearance(pts) - door)  # distance past the doorway
+            clear = np.array(clear)
+            # Open: no frame sees a wall foot at the doorway, and the next wall ahead is
+            # most of the neighbour cell (0.4 m) past it in nearly all of them.
+            if (clear > 0.3).mean() >= 0.75 and (clear < 0.12).sum() == 0:
+                opened.append(e)
+    return opened
 
 
 def wrap_angle(a):
